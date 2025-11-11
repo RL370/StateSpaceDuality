@@ -8,7 +8,7 @@
 
 ---
 
-# Overview (13–15 minutes)
+# Overview
 
 ## 0. Understanding Duality - The Core Insight
 ## 1. The Problem - Two Competing Paradigms
