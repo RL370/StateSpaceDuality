@@ -1,150 +1,205 @@
 # Transformers are SSMs: Generalized Models and Efficient Algorithms Through Structured State Space Duality
 
-**Presenter**: Ryan Li  
-**Email**: [ryan.li@vanderbilt.edu](mailto:ryan.li@vanderbilt.edu)  
-**Institution**: Vanderbilt University – Data Science Institute  
-**Paper**: [arXiv:2405.21060](https://arxiv.org/abs/2405.21060)  
-**Authors**: Tri Dao & Albert Gu  
+**Presenter:** Ryan Li  
+**Email:** ryan.li@vanderbilt.edu  
+**Institution:** Vanderbilt University – Data Science Institute  
+**Paper:** Dao & Gu, *Transformers are SSMs: Generalized Models and Efficient Algorithms Through Structured State Space Duality* (ICML 2024)
 
 ---
 
 ## 0. Talk Roadmap (13–15 minutes)
 
-1. Motivation & Setting  
+1. Motivation: runtime & why Transformers / SSMs matter  
 2. Mathematics of SSMs (2.1)  
 3. Mathematics of Attention (2.2)  
-4. Why Structured Matrices Matter (2.3)  
-5. Recurrent Linear vs Dual Quadratic Forms (2.4)  
-6. Matrix Form of SSMs (Eq.3), Definition 3.2 & 1-SS Matrices (3.1–3.2)  
-7. Formal Algorithms  
-   - Attention (Transformer)  
-   - SSM (Recurrent)  
-   - Mamba-1  
-   - Mamba-2 (SSD)  
-   - 1-SS / Left–Center–Right factorization  
-8. Deeper Questions (2 collapsibles)  
-9. References  
+4. Why structured matrices matter (2.3)  
+5. Recurrent linear vs dual quadratic forms (2.4)  
+6. Matrix form of SSMs (Eq. 3), semiseparable & 1-SS matrices (3.1–3.2)  
+7. Formal algorithms:
+   - Attention layer
+   - SSM layer
+   - Mamba-1
+   - Mamba-2 (SSD)
+   - 1-SS (left/center/right) multiplication
+8. Two runtime-focused SSD questions (collapsible)  
+9. References
 
 ---
 
-## 1. Motivation
+## 1. Motivation: Runtime & Importance
 
-Sequence modeling currently features two major paradigms:
+Let:
 
-- **Transformers (Attention)** – extremely expressive but cost grows as \(O(T^2)\).  
-- **State Space Models (SSMs)** – linear-time in \(T\), efficient memory, but less exploited in large-scale sequence modeling.
+- $T$ = sequence length  
+- $d$ = model dimension  
+- $N$ = SSM state dimension  
 
-**Core question:**  
-> Are these two paradigms fundamentally different, or are they two algorithmic realizations of the same **linear operator**?  
+**Transformers / Attention**
 
-**Answer (Dao & Gu, 2024):**  
-Yes — they are duals. Through **Structured State Space Duality (SSD)** we show that attention mechanisms, SSM recurrences, and semiseparable matrix operators are different algorithms evaluating the same underlying transformation.  
+- Power almost all modern LLMs.
+- Complexity: building attention weights costs
+  \[
+  \mathcal{O}(T^2 d),
+  \]
+  memory also $\mathcal{O}(T^2)$.
+- Fantastic parallelism, painful when $T$ is large (long-context, code, documents).
+
+**State Space Models (SSMs)**
+
+- Come from control/dynamical systems.
+- Maintain a compressed state of the past.
+- Complexity:
+  \[
+  \mathcal{O}(T N)
+  \]
+  for structured variants → ideal scaling.
+- Historically implemented as **sequential scans**, so hardware (GPU) is under-utilized.
+
+**Central SSD perspective**
+
+> Attention and SSMs are not opposites; they are two runtime points on the same operator family. SSD explains how to move between them using **structured matrices**, getting both:  
+> - attention-like expressivity & parallelism,  
+> - SSM-like linear runtime.
 
 ---
 
-## 2. Mathematics of Sequence Models
+## 2. Mathematics
 
 ### 2.1 State Space Models (SSMs)
 
-Define latent state \(h_t \in \mathbb R^N\), input \(x_t \in \mathbb R^d\), output \(y_t \in \mathbb R^p\):
+We track a latent state $h_t \in \mathbb{R}^N$:
 
 \[
 \begin{aligned}
-h_t &= A_t\,h_{t-1} \;+\; B_t\,x_t, \\
-y_t &= C_t^\top\,h_t.
+h_t &= A_t h_{t-1} + B_t x_t, \\
+y_t &= C_t^\top h_t,
 \end{aligned}
 \]
 
-Here:
-- \(A_t \in \mathbb R^{N\times N}\): state transition (how memory evolves).
-- \(B_t \in \mathbb R^{N\times d}\): inject current input into state.
-- \(C_t \in \mathbb R^{N\times p}\): read out the latent state into output.
+with:
 
-**Unrolled causal form:**
+- $x_t \in \mathbb{R}^d$: input,
+- $y_t \in \mathbb{R}^p$: output,
+- $A_t \in \mathbb{R}^{N \times N}$: transition (how memory propagates),
+- $B_t \in \mathbb{R}^{N \times d}$: input write,
+- $C_t \in \mathbb{R}^{N \times p}$: readout.
+
+**Unrolled form**
+
+For $t \ge s$:
 
 \[
-y_t = \sum_{s=1}^{t}
+y_t
+= \sum_{s=1}^{t}
 C_t^\top
 \left(
-\prod_{k=s+1}^{t} A_k
+  \prod_{k=s+1}^{t} A_k
 \right)
-B_s\,x_s.
+B_s x_s.
 \]
 
-This shows each past input \(x_s\) influences \(y_t\) via the product of transitions from \(s+1\) to \(t\).
+Interpretation:
 
-**Intuitive commentary:**
-- The model maintains memory via the state \(h_t\).
-- The chain of \(A\)-matrices serves as a “temporal transformer” of past inputs.
-- Efficiency: you update one state per timestep → \(O(T)\) operations (for structured \(A_t\)).
+- Each $x_s$ is written into state via $B_s$.
+- It is transported forward by the product of transitions $\prod_{k=s+1}^t A_k$.
+- It is read out at time $t$ via $C_t^\top$.
+
+**Runtime view**
+
+- Direct evaluation via recurrence: one update per $t$ → $\mathcal{O}(T)$ multiplications (modulo $N$).
+- Extremely memory-efficient (keep only $h_t$).
+- But this update is inherently sequential across $t$.
 
 ---
 
 ### 2.2 Attention Mechanisms
 
-Given sequence matrix \(X \in \mathbb R^{T \times d_{\text{model}}}\):
+Given $X \in \mathbb{R}^{T \times d_{\text{model}}}$:
 
 \[
-Q = X W_Q,\quad K = X W_K,\quad V = X W_V.
+Q = X W_Q,\quad
+K = X W_K,\quad
+V = X W_V.
 \]
 
-Define:
+Scores:
 
 \[
-S = \frac{Q\,K^\top}{\sqrt{d_k}},\quad
-A = \mathrm{softmax}_{\text{rows}}(S).
+S = \frac{Q K^\top}{\sqrt{d_k}},
 \]
 
-Then:
+Row-wise softmax:
 
 \[
-Y = A\,V,\quad
-y_t = \sum_{s=1}^{T} \alpha_{t,s}\,v_s,\quad
-\alpha_{t,s} = \frac{\exp(q_t \cdot k_s / \sqrt{d_k})}{\sum_{r=1}^T \exp(q_t \cdot k_r / \sqrt{d_k})}.
+A_{t,s} = \frac{\exp(S_{t,s})}{\sum_{r=1}^T \exp(S_{t,r})}.
 \]
 
-**Intuitive commentary:**
-- Each position \(t\) attends to all past (and sometimes future) positions.
-- Flexible dependencies without strict temporal ordering.
-- But complexity: building \(QK^\top\) and softmaxing yields \(O(T^2 d)\) operations and \(O(T^2)\) memory.
+Output:
+
+\[
+Y = A V,\quad
+y_t = \sum_{s=1}^T A_{t,s} v_s.
+\]
+
+Interpretation:
+
+- $A_{t,s}$ tells us how much token $t$ attends to token $s$.
+- The full $T \times T$ matrix $A$ is a **dense kernel over positions**.
+
+**Runtime view**
+
+- Forming $QK^\top$ and multiplying by $V$ costs $\mathcal{O}(T^2 d)$.
+- All positions are updated in parallel (matrix multiplies).
+- Ideal for GPUs, but becomes dominating cost when $T$ is large.
 
 ---
 
-### 2.3 Importance of Structured Matrices
+### 2.3 Why Structured Matrices Matter
 
-Many sequence-to-sequence models can be expressed as:
-
-\[
-Y = M\,X,
-\]
-with \(M \in \mathbb R^{T \times T}\) whose \(M_{t,s}\) describes how input \(x_s\) affects output \(y_t\).
-
-- In **attention**, \(M\) is dense: \(M_{t,s} = \alpha_{t,s}\).
-- In **SSMs** (Eq.3 below), 
+Any *linear* sequence map can be written as:
 
 \[
-M_{t,s} = 
-\begin{cases}
-C_t^\top \left( \prod_{k=s+1}^{t} A_k \right) B_s, & s \le t, \\
-0, & s > t.
-\end{cases}
+Y = M X,
 \]
 
-Thus \(M\) is **lower triangular** (causal) and often has additional rank-structure.
+where $M \in \mathbb{R}^{T \times T}$ and
 
-**Why structure matters:**
+\[
+(MX)_t = \sum_{s=1}^T M_{t,s} x_s.
+\]
 
-- **Parameter efficiency**: Structured matrices can have \(O(T)\) or \(O(Tr)\) parameters instead of \(O(T^2)\).  
-- **Compute efficiency**: Multiplying by \(M\) can be done in \(O(T)\) or \(O(T\log T)\) if structure is exploited (via recurrences, fast transforms).  
-- **Inductive bias**: Structure imposes assumptions (e.g., decaying memory, locality) beneficial for many sequence tasks.
+- Attention: $M = A$ is dense, learned implicitly via $Q,K$ and softmax.
+- SSM: from 2.1,
 
-One key class: **semiseparable matrices**, which generalize Toeplitz/Hankel structures and support efficient algorithms.
+  \[
+  M_{t,s} =
+  \begin{cases}
+  C_t^\top \left( \displaystyle\prod_{k=s+1}^{t} A_k \right) B_s,
+  & s \le t, \\[4pt]
+  0, & s > t.
+  \end{cases}
+  \]
+
+So SSM kernels are:
+
+1. **Causal (lower triangular)**.
+2. Built from structured products and low-rank factors.
+
+**Structured matrices (e.g., semiseparable, Toeplitz, low-rank)** give us:
+
+- Fewer parameters: often $\mathcal{O}(T)$ or $\mathcal{O}(T r)$ vs $\mathcal{O}(T^2)$.
+- Faster matvec: can be evaluated in (near-)linear time.
+- A way to keep attention-like *global* dependencies, while paying SSM-like runtime.
+
+SSD’s key move: recognize SSM-induced $M$ as a **semiseparable matrix**, so we can evaluate the associated operator efficiently and in parallel.
 
 ---
 
-### 2.4 Recurrent Linear Form vs Dual Quadratic Form
+### 2.4 Recurrent Linear vs Dual Quadratic Forms
 
-#### Recurrent Linear Form
+SSMs admit two mathematically equivalent but computationally different views:
+
+#### (a) Recurrent Linear Form
 
 \[
 \begin{aligned}
@@ -153,303 +208,295 @@ y_t &= C_t^\top h_t.
 \end{aligned}
 \]
 
-- Algorithm: a single pass (scan) through sequence.
-- Complexity: \(O(T)\) steps for structured \(A_t\).
-- Memory: small state \(h_t\) stored; no entire history kept.
-- Bottleneck: inherently sequential → limited hardware parallelism.
+- Complexity: $\mathcal{O}(T N^2)$ in general, $\mathcal{O}(T N)$ with structured $A_t$.
+- Streaming-friendly, tiny memory.
+- Poor sequence-parallelism: strict dependence on $h_{t-1}$.
 
-#### Dual Quadratic Form (Kernel / Attention style)
+#### (b) Dual Quadratic Form (Kernel Form)
 
-Define  
+Define
+
 \[
 K(t,s) =
 \begin{cases}
-C_t^\top \left( \prod_{k=s+1}^{t} A_k \right) B_s, & s \le t,\\
+C_t^\top \left( \displaystyle\prod_{k=s+1}^{t} A_k \right) B_s,
+& s \le t, \\[6pt]
 0, & s > t.
 \end{cases}
 \]
-Then
+
+Then:
+
 \[
-y_t = \sum_{s=1}^T K(t,s)\,x_s,\quad
-Y = K\,X.
+y_t = \sum_{s=1}^{T} K(t,s) x_s, \quad
+Y = K X.
 \]
 
-- Conceptually like attention: a matrix multiply over full sequence length.
-- Complexity: naïvely \(O(T^2 d)\) if \(K\) is dense.
-- Advantage: fully parallelizable (matrix operations).
-- If \(K\) has structure (e.g., semiseparable), one can get both parallelism and efficiency.
+- Naively costs $\mathcal{O}(T^2)$ to materialize and apply.
+- But: fully parallelizable (just matrix multiplications).
+- Structurally very close to attention: both are “all-pairs with a kernel”.
 
-**Comparison summary:**
+**Contrast focusing on runtime & SSD:**
 
-| Form               | Algorithmic Strategy         | Complexity     | Parallelism         |
-|--------------------|-----------------------------|---------------|---------------------|
-| Recurrent Linear   | Step-by-step update         | \(O(T\,N^2)\)/\(O(T\,N)\) | Low (serial)        |
-| Dual Quadratic     | Full kernel matrix multiply | \(O(T^2\,d)\) | High (matrix ops)   |
+- Recurrent form:
+  - Efficient in $T$, inefficient for GPUs (sequential).
+- Dual form:
+  - Perfect for GPUs, bad in $T$ if unstructured.
+- SSD:
+  - Observe $K$ is *structured semiseparable* ⇒ can compute $KX$ in *linear time* using algorithms that look like attention but avoid the $T^2$ blowup.
 
-SSD combines the best: **structured kernel** so we can get near-linear complexity *and* high parallelism.
+This is the runtime heart of SSD.
 
 ---
 
-## 3. Matrix Form, Definition & 1-Semiseparable Matrices
+## 3. Matrix Form (Eq. 3), Semiseparable & 1-SS
 
 ### 3.1 Equation (3): Matrix Transformation Form of SSMs
 
-In the paper:
+SSD writes the SSM as:
 
 \[
-Y = M\,X,\quad
+Y = M X,
+\]
+
+with
+
+\[
 M_{t,s} =
 \begin{cases}
-C_t^\top \Big( \prod_{k=s+1}^t A_k \Big) B_s, & s \le t,\\
+C_t^\top \left( \displaystyle\prod_{k=s+1}^{t} A_k \right) B_s,
+& s \le t, \\[6pt]
 0, & s > t.
 \end{cases}
 \tag{3}
 \]
 
-**Annotation:**
-- \(M\) is lower-triangular → causal.
-- Entry \(M_{t,s}\) captures influence of input at time \(s\) on output at time \(t\).
-- The product of \(A\)-matrices transports the contribution forward in time.
-- This shows: SSM is a particular structured linear operator mapping \(X\) → \(Y\).
+Intuition:
 
-### 3.2 Definition (3.2): Semiseparable / Structured Matrix Families
+- Row $t$ of $M$ = “how do all earlier inputs $x_s$ flow into $y_t$?”
+- Column $s$ of $M$ = “how does $x_s$ influence all future outputs?”
+- The transition product is the **transport operator**; $B_s, C_t$ are write/read heads.
+- Same $M$ underlies both:
+  - SSM recurrence (efficient but sequential),
+  - quadratic kernel (parallel but naive quadratic).
 
-From the paper: A matrix is semiseparable if its off‐diagonal blocks admit a low‐rank factorization (row-vector × column-vector). In particular, a **1‐semiseparable** (1SS) matrix meets:
+SSD’s job: exploit **structure in $M$**.
+
+---
+
+### 3.2 1-Semiseparable (1-SS) Matrices
+
+A key structure in the paper is the **1-semiseparable (1-SS)** matrix.
+
+A matrix $M \in \mathbb{R}^{T \times T}$ is 1-SS if there exist vectors
+$u_1,\dots,u_T$, $v_1,\dots,v_T$, and diagonal $d_1,\dots,d_T$ such that:
 
 \[
-M_{i,j} = \begin{cases}
+M_{i,j} =
+\begin{cases}
 d_i, & i = j,\\
-u_i\,v_j, & i > j,\\
+u_i v_j, & i > j,\\
 0, & i < j.
 \end{cases}
 \]
 
-### 3.3 1-Semiseparable (1SS) Matrices – Deep Intuition
-
-**Definition recap:**
+Example pattern:
 
 \[
 M =
 \begin{pmatrix}
 d_1 & 0 & 0 & \dots \\
-u_2\,v_1 & d_2 & 0 & \dots \\
-u_3\,v_1 & u_3\,v_2 & d_3 & \dots \\
+u_2 v_1 & d_2 & 0 & \dots \\
+u_3 v_1 & u_3 v_2 & d_3 & \dots \\
 \vdots & \vdots & \vdots & \ddots
-\end{pmatrix}
+\end{pmatrix}.
 \]
 
-**Key points:**
-- Each entry below diagonal is **outer-product style**: \(u_i \cdot v_j\).
-- Storage cost: vectors \(u \in \mathbb R^T\), \(v \in \mathbb R^T\), diag \(d \in \mathbb R^T\). Total \(O(T)\).
-- Matrix-vector product: can be done in \(O(T\,d)\) instead of \(O(T^2\,d)\) by using an accumulator:
-  ```
-  acc = 0
-  for i = 1…T:
-    y[i] = d[i]*x[i] + u[i]*acc
-    acc += v[i]*x[i]
-  ```
+**Why 1-SS is powerful (runtime view):**
 
-**Why relevant to SSD/SSM:**
-- The SSM kernel matrix \(M\) from Eq.(3) often has this semiseparable form when \(A_k\) are scalar or diagonal, and \(B_s, C_t\) are rank-1.
-- Thus the operator can be evaluated efficiently (linear time) while also supporting a blocked, parallel algorithm.
+- Parameters: store $u$, $v$, $d$ → $\mathcal{O}(T)$ instead of $\mathcal{O}(T^2)$.
+- Matvec can be done with a single pass:
 
-**Summary annotation:**
-- Structured matrix = memory of how every past input affects future outputs.
-- 1-SS constraint = structured but flexible enough for many temporal tasks.
-- SSD uses these to bridge efficient recurrence and efficient parallelism.
+  - Maintain accumulator
+    \[
+    r_i = r_{i-1} + v_i x_i
+    \]
+  - Then
+    \[
+    y_i = d_i x_i + u_i r_{i-1}.
+    \]
 
----
+  This is $\mathcal{O}(T)$.
 
-## 4. Formal Algorithms
+**Connection to SSMs & SSD:**
 
-### Algorithm A: Attention Layer (Transformer Style)
-
-**Input:**  
-- \(X \in \mathbb R^{T \times d_{\text{model}}}\)  
-- Projection matrices \(W_Q, W_K, W_V\)
-
-**Output:**  
-- \(Y \in \mathbb R^{T \times d_{\text{model}}}\)
-
-```
-Procedure AttentionLayer(X, W_Q, W_K, W_V, d_k):
-  Q ← X · W_Q
-  K ← X · W_K
-  V ← X · W_V
-  S ← Q · Kᵀ / √d_k
-  A ← softmax_rows(S)
-  Y ← A · V
-  return Y
-```
-
-**Notes:**  
-- Dense kernel → \(O(T^2)\) memory and compute.  
-- Works well for moderate T but scales poorly to very long sequences.
+- For scalar/diagonal $A_t$ and rank-1 $B_s, C_t$, the kernel $M$ in (3) becomes 1-SS.
+- This means SSM kernels can be computed:
+  - via recurrence (SSM),
+  - or via one-pass semiseparable matvec (structured),
+  - or via blocked parallel SSD algorithms.
+- This structure is what lets Mamba-2 be both **fast in $T$** and **GPU-efficient**.
 
 ---
 
-### Algorithm B: SSM Layer (Recurrent Linear Form)
+## 4. Formal Algorithms (Runtime-Aware)
 
-**Input:**  
-- Sequence \(x_1…x_T\)  
-- Parameter sequences \(A_1…A_T, B_1…B_T, C_1…C_T\)  
-- Initial state \(h_0 = 0\)
+### Algorithm A – Attention Layer
 
-**Output:**  
-- Outputs \(y_1…y_T\)
+**Input:** $X \in \mathbb{R}^{T \times d_{\text{model}}}$, $W_Q, W_K, W_V$.  
+**Output:** $Y \in \mathbb{R}^{T \times d_{\text{model}}}$.
 
-```
-Procedure SSM_Layer(x₁…x_T, A₁…A_T, B₁…B_T, C₁…C_T):
-  h ← 0
-  for t = 1 to T do
-    h ← A_t · h + B_t · x_t
-    y_t ← C_tᵀ · h
-  end for
-  return y₁…y_T
-```
+1. $Q \leftarrow X W_Q,\quad K \leftarrow X W_K,\quad V \leftarrow X W_V$.
+2. $S \leftarrow Q K^\top / \sqrt{d_k}$.
+3. $A \leftarrow \mathrm{softmax}_{\text{row}}(S)$.
+4. $Y \leftarrow A V$.
 
-**Notes:**  
-- Linear time \(O(T)\) (with structured \(A_t\)).  
-- Sequential loop: can’t fully parallelize across time easily.
+Runtime: $\mathcal{O}(T^2 d_k)$ (good parallelism, poor scaling in $T$).
 
 ---
 
-### Algorithm C: Mamba-1 (Selective SSM)
+### Algorithm B – SSM Layer (Recurrent Form)
 
-**Input:**  
-- Sequence \(x_{1…T}\)
+**Input:** $x_1,\dots,x_T$, matrices $A_t, B_t, C_t$.  
+**Output:** $y_1,\dots,y_T$.
 
-**Output:**  
-- \(y_{1…T}\)
+1. Initialize $h_0 \leftarrow 0$.
+2. For $t = 1 \dots T$:
+   - $h_t \leftarrow A_t h_{t-1} + B_t x_t$.
+   - $y_t \leftarrow C_t^\top h_t$.
+3. Return $y_1,\dots,y_T$.
 
-```
-Procedure MAMBA-1(x₁…x_T):
-  h ← 0
-  for t = 1 to T do
-    A_t ← f_A(x_t)
-    B_t ← f_B(x_t)
-    C_t ← f_C(x_t)
-    h ← A_t · h + B_t · x_t
-    y_t ← C_tᵀ · h
-  end for
-  return y₁…y_T
-```
-
-**Notes:**  
-- Adds **input-dependence** of state transforms → selective memory.  
-- Still sequential; GPU utilization limited.
+Runtime: $\mathcal{O}(T N^2)$ or $\mathcal{O}(T N)$; sequential across $t$.
 
 ---
 
-### Algorithm D: Mamba-2 / SSD Blocked Algorithm
+### Algorithm C – Mamba-1 (Selective SSM)
 
-**Input:**  
-- \(X \in \mathbb R^{T \times P}\)  
-- Scalars \(a_{1…T}\), matrices \(B_{1…T}, C_{1…T}\)  
-- Block size \(Q\), number of blocks \(B = T/Q\)
+**Idea:** Make $A_t, B_t, C_t$ depend on $x_t$ for selective memory; still evaluated via scan.
 
-**Output:**  
-- \(Y \in \mathbb R^{T \times P}\)
+1. For each $t$:
+   - $A_t \leftarrow f_A(x_t)$,
+   - $B_t \leftarrow f_B(x_t)$,
+   - $C_t \leftarrow f_C(x_t)$.
+2. Apply Algorithm B with these.
+3. Output $y_{1:T}$.
 
-```
-Procedure MAMBA-2_SSD(X, a₁…a_T, B₁…B_T, C₁…C_T, Q):
-  Partition X into blocks j = 0…B−1 with index set I_j = [jQ:(j+1)Q−1]
-
-  // 1. Intra-block local operator (parallel)
-  for j = 0…B−1 in parallel do
-    G ← C[I_j] · B[I_j]ᵀ      // shape Q×Q
-    L ← BuildMask(a[I_j])      // Q×Q semiseparable mask
-    M_j ← L ◦ G
-    Y[I_j] ← M_j · X[I_j]
-  end for
-
-  // 2. Inter-block (block recurrence)
-  S[right][0] ← B[I_0]ᵀ · X[I_0]
-  for j = 1…B−1 do
-    S[right][j] ← B[I_j]ᵀ · X[I_j]
-  end for
-
-  for j = 1…B−1 do
-    α_j ← ∏_{k=jQ}^{(j+1)Q−1} a_k
-    S[j] ← α_j · S[j−1] + S[right][j]
-  end for
-
-  for j = 1…B−1 do
-    Y[I_j] ← Y[I_j] + C[I_j] · S[j−1]
-  end for
-
-  return Y
-```
-
-**Notes:**  
-- Most compute is batched matmuls → great GPU efficiency.  
-- Recurrence step only across blocks → reduces sequential cost from \(T\) to \(T/Q\).  
-- Achieves near-linear scaling and high hardware throughput.
+Runtime: linear in $T$, but low hardware utilization due to sequential scan.
 
 ---
 
-### Algorithm E: 1-Semiseparable (1SS) MatVec via Left/Center/Right
+### Algorithm D – Mamba-2 / SSD (Blocked Semiseparable)
 
-**Input:**  
-- Sequence \(x \in \mathbb R^{T \times P}\)  
-- Parameters \(u_{1…T}, v_{1…T}, d_{1…T}\)
+**Goal:** Evaluate the same SSM-style operator using 1-SS/SSD structure with high parallelism.
 
-**Output:**  
-- \(y \in \mathbb R^{T \times P}\)
+Let $T = B Q$ (blocks of length $Q$), with parameters $a_t$ (scalar decays), $B_t$, $C_t$.
 
-```
-Procedure SEMISEP_MATVEC(x, u₁…u_T, v₁…v_T, d₁…d_T):
-  acc ← 0  (in ℝ^P)
-  for i = 1 to T do
-    y[i] ← d_i · x[i] + u_i · acc
-    acc ← acc + v_i · x[i]
-  end for
-  return y
-```
+**Outline:**
 
-**Interpretation:**
-- **Right factor (v)**: accumulate input influence.
-- **Center accumulator (acc)**: running summary.
-- **Left factor (u)**: project summary into output.
-- Very efficient: \(O(T\,P)\) instead of \(O(T^2\,P)\).
+1. **Intra-block (parallel)**
+   - For each block $\mathcal{I}_j = [jQ, (j+1)Q-1]$ in parallel:
+     - Compute Gram:
+       \[
+       G_j = C_{\mathcal{I}_j} B_{\mathcal{I}_j}^\top.
+       \]
+     - Build causal mask $L_j$ using products of $a_t$ within block.
+     - Form $M_j = L_j \circ G_j$.
+     - Update $Y_{\mathcal{I}_j} \mathrel{+}= M_j X_{\mathcal{I}_j}$.
+
+2. **Right factor (block compression)**
+   - For each block:
+     \[
+     S^{\text{right}}_j = B_{\mathcal{I}_j}^\top X_{\mathcal{I}_j}.
+     \]
+
+3. **Center factor (block recurrence)**
+   - $S_0 = S^{\text{right}}_0$.
+   - For $j = 1,\dots,B-1$:
+     \[
+     \alpha_j = \prod_{t \in \mathcal{I}_j} a_t, \quad
+     S_j = \alpha_j S_{j-1} + S^{\text{right}}_j.
+     \]
+
+4. **Left factor (inject global state)**
+   - For $j = 1,\dots,B-1$:
+     \[
+     Y_{\mathcal{I}_j} \mathrel{+}= C_{\mathcal{I}_j} S_{j-1}.
+     \]
+
+**Runtime view:**
+
+- Most work: block-local matrix multiplies → highly parallel, GPU-friendly.
+- Only $B = T/Q$ recurrence steps.
+- Achieves near-linear scaling in $T$ with high utilization.
 
 ---
 
-## 7. Deeper Questions
+### Algorithm E – 1-SS Matrix–Vector (Left/Center/Right)
+
+For 1-SS $M$ given by $u_i, v_i, d_i$:
+
+1. Set accumulator $r \leftarrow 0$.
+2. For $i = 1 \dots T$:
+   - $y_i \leftarrow d_i x_i + u_i r$.
+   - $r \leftarrow r + v_i x_i$.
+3. Return $y_{1:T}$.
+
+This is the canonical left/center/right factorization:
+- **Right:** accumulate $v_i x_i$.
+- **Center:** running sum $r$.
+- **Left:** scale by $u_i$.
+Runtime: $\mathcal{O}(T)$.
+
+---
+
+## 5. Two SSD Questions (Runtime-Focused)
 
 <details>
-<summary>Q1 — When does structured (1-SS / semiseparable) kernel constraint become limiting?</summary>
+<summary><strong>Q1 — In terms of runtime, when is enforcing a structured (1-SS / semiseparable) kernel worth it, and when might it hurt?</strong></summary>
 
-**Discussion points:**
-- Structured kernels encode decaying, low-rank dependencies.
-- May fail when the task demands **dense, non-temporal, cross-dependent** interactions (e.g., arbitrary graphs, algorithmic code).  
-- Investigate: How to detect which tasks align with structured kernels vs need full attention?  
-- Consider: Adaptive-rank SSDs or hybrid architectures blending structured + dense kernels.
+**Key angles:**
+
+- Structured kernels reduce cost from $\mathcal{O}(T^2)$ to $\mathcal{O}(T)$–$\mathcal{O}(T r)$, fantastic for long contexts.
+- But they impose inductive bias: monotone decays, low effective rank.
+- They may underfit tasks needing dense, irregular, or bidirectional interactions where full attention’s $T^2$ work is justified.
+- The SSD view encourages us to ask:
+  - For a given application (code, retrieval, math reasoning), does the performance gain of full attention compensate for its runtime cost?
+  - Can adaptive-rank or hybrid SSD–attention models select structure where it helps and relax it where it hurts?
 </details>
 
 <details>
-<summary>Q2 — If SSD becomes standard, how should model & hardware co-design evolve?</summary>
+<summary><strong>Q2 — Given SSD’s unification, how should we balance Attention vs SSM vs SSD in real systems?</strong></summary>
 
-**Discussion points:**
-- SSD turns SSM kernels into large batched matrix multiplications, but hardware is still tuned for classical attention / GEMMs.
-- Think: What primitives should future accelerators expose?  
-  - E.g., “semiseparable mat-mul” hardware.  
-  - “Prefix-product kernels” similar to recurrent scans but vectorized.  
-- Architecture implication: Could future backbone be SSM-first (efficient) with attention only as sparse correction?  
-- System trade-offs: memory bandwidth, latency vs throughput, recurrence vs full parallelism.
+**Key angles:**
+
+- Attention is still ideal for:
+  - Short/medium contexts,
+  - Highly irregular dependencies,
+  - Where $T^2$ cost is acceptable.
+- SSM-style recurrences are ideal for:
+  - Streaming and ultra-long contexts,
+  - Edge or low-resource deployment,
+  - Strict latency constraints.
+- SSD / Mamba-2 provides a **middle ground**:
+  - Same underlying operator as SSM,
+  - Implemented with attention-like parallel block kernels,
+  - Nearly linear runtime in $T$ with strong throughput.
+- Practical question for system designers:
+  - Where in the stack do we keep classic attention,
+    and where do we swap to SSD-style layers for runtime savings,
+    without sacrificing task performance?
 </details>
 
 ---
 
-## 8. References
+## 6. References (for further reading)
 
 - Vaswani et al., “Attention Is All You Need”, NeurIPS 2017.  
-- Gu & Dao, “Mamba: Linear-Time Sequence Modeling with Selective State Spaces”, arXiv:2312.00752 (2023).  
+- Gu & Dao, “Mamba: Linear-Time Sequence Modeling with Selective State Spaces”, arXiv:2312.00752.  
 - Dao & Gu, “Transformers are SSMs: Generalized Models and Efficient Algorithms Through Structured State Space Duality”, ICML 2024.  
-- Vandebril et al., “Semiseparable Matrices and Related Algorithms”, 2011.  
-- Blog posts: “How transformers, RNNs and SSMs are more alike than you think”.
+- Literature on semiseparable matrices (Vandebril et al.) for structured linear algebra background.
 
 ---
 
 **Thank you!**  
-Questions? → [ryan.li@vanderbilt.edu](mailto:ryan.li@vanderbilt.edu)
+Questions: ryan.li@vanderbilt.edu
