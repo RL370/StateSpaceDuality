@@ -1385,33 +1385,6 @@ Different tasks may need different structures:
 - [Making Deep Learning Go Brrrr](https://horace.io/brrr_intro.html)
 - [GPU Programming Tutorials](https://developer.nvidia.com/blog/)
 
----
-
-## Citation
-
-If you use this presentation or our demonstrations in your work, please cite the original paper:
-
-```bibtex
-@article{dao2024transformers,
-  title={Transformers are SSMs: Generalized Models and Efficient Algorithms Through Structured State Space Duality},
-  author={Dao, Tri and Gu, Albert},
-  journal={arXiv preprint arXiv:2405.21060},
-  year={2024}
-}
-```
-
-And optionally cite our presentation materials:
-
-```bibtex
-@misc{[yourlastname]2024ssd,
-  title={SSD Comprehensive Demonstration Package},
-  author={[Your Name]},
-  year={2024},
-  howpublished={\url{https://github.com/[your-repo]}}
-}
-```
-
----
 
 ## Questions for Discussion
 
