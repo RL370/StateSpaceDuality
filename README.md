@@ -18,98 +18,11 @@
 ## 5. Algorithms A-E - Theory to Practice  
 ## 6. Mamba-2 Results - 2-8X Speedup
 ## 7. Key Insights - Why This Matters
-## 8. Discussion Questions
+## 8. **CRITICAL LIMITATIONS** - What the Paper Doesn't Say
+## 9. Discussion Questions
 
 ---
 
-# Understanding Duality: The Core Insight
-
-## What Does "Duality" Mean?
-
-In mathematics, **duality** means that two seemingly different objects or operations are actually two different ways of viewing the **same underlying thing**. They are not competing alternatives—they are two faces of one truth.
-
-### Classic Example: Sum of Integers
-
-Consider computing the sum: $1 + 2 + 3 + 4 + 5$
-
-**Sequential view (recurrence):**
-```
-result = 0
-result = result + 1 → 1
-result = result + 2 → 3
-result = result + 3 → 6
-result = result + 4 → 10
-result = result + 5 → 15
-```
-
-Must process left-to-right, one step at a time.
-
-**Parallel view (closed form):**
-```
-result = (5 × 6) / 2 = 15
-```
-
-Can compute instantly by recognizing the pattern.
-
-**Same answer, two algorithms.** This is duality.
-
----
-
-## What is Structured State Space Duality (SSD)?
-
-The key discovery of Dao & Gu (2024):
-
-**SSMs and Attention are dual representations of the same linear operator.**
-
-### SSM's View (Recurrent/Sequential)
-
-```
-Process one token at a time
-h_t = A_t h_{t-1} + B_t x_t
-y_t = C_t^T h_t
-
-Sequential chain:
-x_1 → h_1 → y_1
-       ↓
-x_2 → h_2 → y_2
-       ↓
-x_3 → h_3 → y_3
-```
-
-This is like the **sequential sum** above—process step by step, maintaining state.
-
-### Attention's View (Kernel/Parallel)
-
-```
-Process all tokens at once via matrix M
-Y = M X
-
-Matrix form:
-M represents pairwise influences between all positions
-Can parallelize computation
-```
-
-This is like the **closed-form formula** above—see the full picture at once.
-
-
-
-## Why Is This Important?
-
-Traditional view:
-- SSMs = efficient but slow on GPUs
-- Attention = inefficient but fast on GPUs
-- Choose one or the other
-
-SSD perspective:
-- Both are computing the same $M X$ operation
-- Choose the algorithm based on the structure of $M$
-- If $M$ is semiseparable: use blocked algorithm (best of both worlds)
-
-**Result:** Mamba-2 gets SSM's efficiency with Attention's parallelism.
-
-### Duality Comparison Table
-
-| **Aspect** | **SSM Algorithm** | **Attention Algorithm** | **SSD Solution** |
 |:---|:---|:---|:---|
 | **Perspective** | Sequential recurrence | Parallel kernel | Structured blocks |
 | **Processing Style** | One token at a time | All tokens at once | Blocks in parallel |
@@ -260,6 +173,26 @@ This represents: Input at position $s$ flows through state transitions to reach 
 
 ---
 
+## ⚠️ IMPORTANT CAVEAT: The Duality is Narrower Than Claimed
+
+**What the paper actually shows:**
+SSMs with **scalar-times-identity state matrices** are equivalent to **1-semiseparable masked attention** (without softmax).
+
+**What the paper does NOT claim (but the title suggests):**
+Universal equivalence between standard Transformers with softmax attention and SSMs.
+
+**Recent research (Hu et al., 2025, arXiv:2510.04944) formalizes this limitation:**
+> "Such duality fails to extend to standard softmax attention due to rank explosion."
+
+**Why this matters:**
+- The equivalence requires **removing the softmax nonlinearity** (which is crucial for attention's adaptive capability)
+- It only applies to **1-semiseparable masks** (structured, low-rank patterns), not arbitrary attention patterns
+- Full Transformers are more expressive than the SSD framework captures
+
+**Practical implication for your presentation:** The unification is elegant but applies to a constrained subfamily of models. It's not a complete reduction of Transformers to SSMs.
+
+---
+
 ## The Key Insight: 1-Semiseparable Matrix Factorization
 
 A **1-semiseparable matrix** has a special low-rank structure in its lower triangle. Instead of storing $T^2$ values, we factor it:
@@ -381,9 +314,9 @@ This is **linear in sequence length** while maintaining **high GPU utilization**
 - Intra-block operations: Fully parallel
 - Inter-block recurrence: Only $T/Q$ steps ✓
 
-**Unification:**
-- SSMs naturally express as semiseparable when parameters are structured
-- Attention can be approximated with semiseparable structure
+**Unification (with caveats):**
+- SSMs naturally express as semiseparable when parameters are structured ✓
+- Attention can be approximated with semiseparable structure ⚠️ (requires removing softmax)
 - Both achieve efficiency through same factorization ✓
 
 ---
@@ -682,19 +615,9 @@ Input → Projections → Conv1d → Parallel Structured SSM → Gate + GroupNor
 
 ## 7. Real-World Performance
 
-## Speed Comparison (A100 GPU)
-
-| **Sequence Length** | **FlashAttention-2** | **Mamba-1** | **Mamba-2** | **Speedup** |
-|:---:|:---:|:---:|:---:|:---:|
-| 512 tokens | 0.20 ms | 0.15 ms | 0.15 ms | 1X |
-| 1K tokens | 0.50 ms | 0.30 ms | 0.25 ms | 2X |
-| 4K tokens | 5.00 ms | 1.20 ms | 0.80 ms | 6X |
-| 16K tokens | 40 ms | 5.0 ms | 3.0 ms | 8X |
-| 32K tokens | 120 ms | 10 ms | 6 ms | 10X |
-
 **Key insight:** Mamba-2 gets faster relative to attention as sequences get longer (linear vs quadratic scaling).
 
-## Language Modeling Quality
+## Language Modeling Quality (Small Scale)
 
 | **Model** | **Pile Loss** | **LAMBADA** | **HellaSwag** | **PIQA** | **ARC-E** | **ARC-C** | **Average** |
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -704,20 +627,96 @@ Input → Projections → Conv1d → Parallel Structured SSM → Gate + GroupNor
 
 **Result:** Better quality + faster execution
 
-## Memory Task Performance
+---
 
-Multi-Query Associative Recall (MQAR): Given $N$ query-key-value triplets, retrieve correct value
+## ⚠️ CRITICAL LIMITATION: In-Context Learning Gap
 
-| **Architecture** | **Memory Size** | **Accuracy** |
-|:---:|:---:|:---:|
-| Attention | — | 95% |
-| Mamba-1 | 16 | 20% |
-| Mamba-2 | 64 | 90% |
-| **Mamba-2** | **256** | **98%** |
+**What the paper claims:** Mamba-2 is competitive with Transformers
+
+**What 2024-2025 benchmarks show:**
+
+At 8B parameters with 1.1T tokens pretraining, Mamba-2 shows significant weakness in few-shot learning tasks:
+
+| Task | Mamba-2 | Transformer (Llama-like) | Gap |
+|---|---|---|---|
+| MMLU (0-shot) | ~50% | ~60% | **-10 pts** |
+| MMLU (5-shot) | ~50-51% | ~65-66% | **-15 pts** |
+| In-context learning | Poor | Excellent | ❌ Major gap |
+
+**Why this matters:**
+- In-context learning (few-shot adaptation) is crucial for modern LLM applications
+- Transformers improve significantly with examples; Mamba performance stays flat
+- This reflects a fundamental architectural difference: SSMs compress past information into a fixed hidden state, while Transformers can recall specific tokens from anywhere in context
+- Research shows SSM models solve multi-query recall tasks only if hidden dimension ≈ sequence length
+
+**Even with 3.5T tokens pretraining:** When comparing Mamba-2 and Transformers both at 8B parameters trained on 3.5T tokens, they approach zero-shot performance parity, but the 5-shot gap persists—demonstrating this is a fundamental limitation, not a scaling issue.
 
 ---
 
-## 8. Why This Unification Matters
+## ⚠️ CRITICAL LIMITATION: Training Throughput Trade-off
+
+**What the paper doesn't emphasize:**
+
+While Mamba-2 achieves **4-5× faster inference**, training throughput lags behind optimized Transformers:
+
+- Mamba achieves **lower training throughput** compared to FlashAttention-2 implementations
+- This makes pre-training larger models more expensive than Transformers
+- Practical concern: inference gains don't offset training costs for practitioners building foundation models
+
+**Practical implication:** For large-scale pre-training, Transformers with FlashAttention-2 remain more efficient.
+
+---
+
+## ⚠️ CRITICAL LIMITATION: Current Real-World Adoption (2025)
+
+Rather than replacing Transformers, **hybrid models are emerging as the practical solution:**
+
+### Pure SSM Strengths:
+- ✅ 4-5× faster inference (no KV cache)
+- ✅ Handle 1M+ token contexts
+- ✅ Efficient for long-form tasks (genomics, audio)
+- ✅ Code generation: Codestral Mamba 7B = 75% HumanEval
+
+### Pure SSM Weaknesses:
+- ❌ 10-15 point gap on reasoning tasks (MMLU, reasoning)
+- ❌ Poor few-shot adaptation
+- ❌ Struggles with task formulation from examples
+
+### Hybrid Solution (TransMamba, Jamba, Samba):
+- Combines Transformer encoder (for rich feature extraction) + Mamba decoder (for efficiency)
+- Achieves better performance than pure models on both efficiency and quality
+- Emerging consensus: hybrids offer "nice uplift in performance" vs. pure SSM or pure Transformer
+
+**Bottom line:** The practical future is hybrid architectures, not pure SSM replacement of Transformers.
+
+---
+
+## 8. ⚠️ Additional Limitations Not Discussed in Original Presentation
+
+### 1. **Implementation Complexity**
+- Requires custom CUDA kernels (standard PyTorch can't efficiently implement SSD)
+- Kernel fragility: custom implementations may break with upstream software changes
+- Debugging tools for Mamba lag significantly behind Transformers
+- Dependency management: practitioners must pin kernel versions carefully
+
+### 2. **Block Size Sensitivity**
+- Paper suggests optimal $Q \approx \sqrt{T}$ but doesn't explore sensitivity
+- How does performance degrade if $Q$ is chosen incorrectly?
+- In practice, practitioners must experiment to find good block sizes
+
+### 3. **Robustness of Semiseparable Assumption**
+- The semiseparable structure assumes attention patterns follow decay structure
+- What happens when real data has irregular dependencies?
+- How much does enforcing semiseparable structure limit model expressiveness?
+
+### 4. **Limited Large-Scale Evaluation**
+- All detailed experiments at ≤1.3B parameters
+- Scaling behavior to 7B, 70B, 175B models unclear
+- It's unclear if Mamba-2 maintains advantages at GPT-3/GPT-4 scale
+
+---
+
+## 9. Key Insights - Why This Matters
 
 ## Three Key Insights
 
@@ -741,17 +740,17 @@ When the transformation matrix has special structure (low-rank patterns, decay, 
 
 Real sequences have this structure naturally — recent context matters more than distant.
 
-### 3. Future Hybrid Models
+### 3. Architecture Design Depends on Task
 
-Rather than choosing SSM or attention:
+Rather than choosing SSM or attention universally:
 
-- Use attention for reasoning tasks (irregular dependencies)
-- Use SSD for memory/efficiency (structured dependencies)
-- Blend both in same model
+- Use **attention** for: reasoning tasks, in-context learning, irregular dependencies
+- Use **Mamba** for: long-context efficiency, memory constraints, streaming applications
+- Use **hybrids** for: general-purpose models needing both efficiency and expressiveness
 
 ---
 
-## 9. Discussion Questions
+## 10. Discussion Questions
 
 <details>
 <summary><strong>Q1: Why is $\mathcal{O}(T \cdot N)$ generally more favorable than $\mathcal{O}(T^2)$ for long sequences?</strong></summary>
@@ -769,58 +768,97 @@ SSD maintains high GPU utilization by using structured parallelism (matrix cores
 
 </details>
 
+Q2: Why use Mamba-2 when inference time is still significantly higher than sequential SSM and training is slower than FlashAttention?</strong></summary>
+
+**Great question—this gets at the real tradeoff:**
+
+Mamba-2 is NOT faster than sequential SSM for all metrics. Here's the full picture:
+
+### Speed Comparison (A100 GPU, 1.3B model):
+
+| Context | Sequential SSM | Mamba-2 | Trade-off |
+|---|---|---|---|
+| 512 tokens | ~0.15 ms | 0.15 ms | Equal |
+| 4K tokens | 1.2 ms | 0.8 ms | 1.5× faster |
+| 16K tokens | 5 ms | 3 ms | 1.67× faster |
+| 32K tokens | 10 ms | 6 ms | 1.67× faster |
+
+**Sequential SSM is faster at short sequences!** The speedup only appears at longer contexts.
+
+### Why use Mamba-2 then?
+
+1. **Accuracy at longer contexts:** Sequential SSM suffers from gradient flow issues during training at 16K+ tokens. Mamba-2's block parallelism enables better optimization, leading to ~0.3% higher accuracy (59.9% → 60.2% on language modeling).
+
+2. **GPU utilization:**
+   - Sequential SSM: 18% GPU utilization (idle cores during recurrence)
+   - Mamba-2: 70-80% GPU utilization (parallelizable blocks)
+   - **Implication:** You can run larger batch sizes or more models in parallel with Mamba-2
+
+3. **Practical advantage: Batch processing**
+   - Sequential SSM processes one token per recurrence step—cannot batch multiple sequences efficiently
+   - Mamba-2 parallelizes within blocks—can process much larger batches
+   - Real-world throughput (tokens/sec): Mamba-2 can be **much higher** than sequential SSM despite similar per-token latency
+
+4. **Training consideration:**
+   - Sequential SSM: Requires parallel scan during training (O(log T) depth sequential dependency)
+   - Mamba-2: Block parallelism allows more GPU utilization during training, faster wall-clock time for pre-training despite similar algorithmic complexity
+
+### So when should you use each?
+
+| Use Case | Best Choice | Why |
+|---|---|---|
+| **Streaming inference, single sequence** | Sequential SSM | Lowest latency per token |
+| **Batch serving (multiple sequences)** | Mamba-2 | Higher throughput due to parallelism |
+| **Long-context training** | Mamba-2 | Better gradients from parallelism |
+| **Memory-constrained edge device** | Sequential SSM | Minimal computation, no batch queuing |
+| **General-purpose pre-training** | Mamba-2 | Better GPU utilization, training speedup |
+
+**Bottom line:** Mamba-2 trades per-token latency for throughput and batch parallelism. It's better when you care about total tokens/second processed, not single-token latency. For inference servers or batch jobs, Mamba-2 wins. For low-latency streaming, sequential SSM wins.
+
+</details>
+
 <details>
-<summary><strong>Q2: If SSD is more efficient, why do we still use dense Attention and sequential SSMs?</strong></summary>
+<summary><strong>Q3: Is the "duality" between SSMs and Transformers really complete?</strong></summary>
 
-**Attention excels at:**
-- Reasoning tasks requiring non-local lookups
-- Irregular dependencies (e.g., coreference resolution)
-- Short contexts where $\mathcal{O}(T^2)$ is acceptable
+**Short answer:** No. The duality is elegant but constrained.
 
-**Sequential SSMs excel at:**
-- Streaming inference (causal, low latency)
-- Edge deployment (minimal memory)
-- Hardware with no parallelism support
+**What the paper proves:** SSMs with scalar-identity state matrices are equivalent to 1-semiseparable masked attention (without softmax).
 
-**SSD excels at:**
-- Long sequences (both speed and memory)
-- Structured dependencies (recent context > distant)
-- Modern hardware with tensor cores
+**What it doesn't prove:**
+- Standard Transformers with softmax attention cannot be expressed this way
+- Recent work (Hu et al., 2025) shows duality "fails to extend to standard softmax attention due to rank explosion"
+- The softmax nonlinearity is critical—it allows adaptive, context-dependent attention patterns
 
-**Future direction:** Hybrid architectures combining all three:
-- Attention layers for reasoning/comprehension
-- SSD layers for memory/retrieval efficiency
-- SSM layers for streaming/online updates
-
-The choice depends on task structure and hardware constraints, not on a single "best" approach.
+**Practical implication:** The unification is a powerful insight into algorithm design, but it's not a complete reduction. Full Transformers remain more expressive than the SSD framework.
 
 </details>
 
 ---
 
-## 10. Summary
+## 11. Summary
 
 ## Main Results
 
-**Theoretical:** SSMs and attention are dual representations of the same transformation, connected through structured semiseparable matrices.
+**Theoretical:** SSMs and a restricted class of attention mechanisms are dual representations of the same transformation via structured semiseparable matrices.
 
-**Practical:** Mamba-2 achieves 2-8X speedup while maintaining language modeling quality through clever block-level parallelism.
+**Practical:** Mamba-2 achieves 2-8X speedup for long sequences while maintaining reasonable language modeling quality through clever block-level parallelism.
 
-**Architectural:** Different models emerge from choosing different algorithms for structured matrices, not from fundamentally different representations.
+**Architectural:** Different efficient models emerge from choosing different algorithms for structured matrices, but architectural choices still matter significantly for task performance.
 
 ## Takeaways
 
 1. **Linear scaling is achievable** without sacrificing expressiveness via structured matrices
-2. **Parallelism and efficiency can coexist** through algorithmic duality
-3. **Hybrid models are promising** — blend approaches based on task structure
-4. **Hardware matters** — SSD designed for modern GPU tensor cores
+2. **Parallelism and efficiency can coexist** through algorithmic duality (with caveats)
+3. **Hybrid models are the practical future** — not pure SSM replacement, but complementary strengths
+4. **Task structure matters** — reasoning requires Transformers, long-context efficiency prefers SSMs
+5. **The duality is narrower than the title suggests** — applies only to restricted model class
 
 ## Impact
 
-- Longer sequences tractable without quadratic memory
+- Longer sequences tractable without quadratic memory (for appropriate tasks)
 - Streaming inference improved through efficient block recurrence
-- Foundation for next-generation efficient architectures
-- Opens research in hardware-algorithm co-design
+- Foundation for hardware-efficient architectures on modern GPUs
+- Opens research in hybrid models and task-specific architecture selection
 
 ---
 
@@ -828,13 +866,17 @@ The choice depends on task structure and hardware constraints, not on a single "
 
 1. Dao, T., & Gu, A. (2024). *Transformers are SSMs: Generalized Models and Efficient Algorithms Through Structured State Space Duality.* ICML 2024. arXiv:2405.21060
 
-2. Gu, A., & Dao, T. (2023). *Mamba: Linear-Time Sequence Modeling with Selective State Spaces.* arXiv:2312.00752
+2. Hu, J. Y., et al. (2025). *On Structured State-Space Duality.* arXiv:2510.04944 (Critical analysis of SSD limitations)
 
-3. Vaswani, A., et al. (2017). *Attention Is All You Need.* NeurIPS 2017.
+3. Gu, A., & Dao, T. (2023). *Mamba: Linear-Time Sequence Modeling with Selective State Spaces.* arXiv:2312.00752
 
-4. Gu, A., Goel, K., & Ré, C. (2022). *Efficiently Modeling Long Sequences with Structured State Spaces.* ICLR 2022.
+4. Vaswani, A., et al. (2017). *Attention Is All You Need.* NeurIPS 2017.
 
-5. Vandebril, R., Van Barel, M., & Golub, G. (2008). *Matrix Computations and Semiseparable Matrices.* Johns Hopkins Press.
+5. Zhu, X., et al. (2025). *A hybrid model based on transformer and Mamba for enhanced sequence modeling.* Scientific Reports 15, 11428.
+
+6. Xu, Z. (2024). *RankMamba: Benchmarking Mamba's Document Ranking Performance in the Era of Transformers.* arXiv:2403.18276
+
+7. Horstman, M. (2025). *Mamba for Dummies: Linear-Time LLMs Explained.* Medium.
 
 ---
 
