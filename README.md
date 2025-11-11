@@ -42,6 +42,8 @@ All three are computing the **same underlying operation:** $Y = M X$ where $M$ i
 
 This is true **duality**: not competing methods, but different ways to compute the same thing.
 
+![State Space Duality Overview](Duality.png)
+
 ---
 
 # 1. The Problem: Two Paradigms
@@ -196,6 +198,8 @@ Universal equivalence between standard Transformers with softmax attention and S
 ## The Key Insight: 1-Semiseparable Matrix Factorization
 
 A **1-semiseparable matrix** has a special low-rank structure in its lower triangle. Instead of storing $T^2$ values, we factor it:
+
+![Semiseparable Matrix Structure](Semiseparable%20Matrices.png)
 
 $$M = \begin{pmatrix}
 d_1 & 0 & 0 & \cdots \\
@@ -576,6 +580,8 @@ Input: x ∈ ℝ^T, u_1,...,u_T, v_1,...,v_T ∈ ℝ^d, d_1,...,d_T ∈ ℝ
 ---
 
 ## 6. Mamba-1 vs Mamba-2: Architecture Comparison
+
+![Mamba Block Architecture](Mamba-Block.png)
 
 ## Mamba-1 (Sequential)
 
