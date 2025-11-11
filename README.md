@@ -399,8 +399,8 @@ This is why Mamba-2 processes 32K token sequences efficiently while dense attent
 
 In SSMs with state size $N$:
 
-- Output projection $C_i \in \mathbb{R}^{N}$ gives the "$u$" factors
-- State transitions $A_{j+1} \cdots A_i B_j \in \mathbb{R}^{N}$ give the "$v$" factors
+- Output projection $C_i \in \mathbb{R}^{N}$ gives the "u" factors
+- State transitions $A_{j+1} \cdots A_i B_j \in \mathbb{R}^{N}$ give the "v" factors
 - Direct term $C_i B_i$ gives the diagonal
 
 Since $N \ll T$ (state is much smaller than sequence), this factorization is **natural and automatic**—not an approximation!
