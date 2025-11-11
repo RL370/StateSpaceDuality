@@ -189,7 +189,7 @@ Universal equivalence between standard Transformers with softmax attention and S
 
 A **1-semiseparable matrix** has a special low-rank structure in its lower triangle. Instead of storing $T^2$ values, we factor it:
 
-![Semiseparable Matrix Structure](Semiseparable%20Matrices.png)
+![Semiseparable Matrix Structure](Semiseparable_Matrices.png)
 
 $$M = \begin{pmatrix}
 d_1 & 0 & 0 & \cdots \\
