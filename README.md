@@ -189,7 +189,7 @@ Universal equivalence between standard Transformers with softmax attention and S
 - It only applies to **1-semiseparable masks** (structured, low-rank patterns), not arbitrary attention patterns
 - Full Transformers are more expressive than the SSD framework captures
 
-**Practical implication for your presentation:** The unification is elegant but applies to a constrained subfamily of models. It's not a complete reduction of Transformers to SSMs.
+**Practical implication:** The unification is elegant but applies to a constrained subfamily of models. It's not a complete reduction of Transformers to SSMs.
 
 ---
 
@@ -693,23 +693,17 @@ Rather than replacing Transformers, **hybrid models are emerging as the practica
 
 ## 8. ⚠️ Additional Limitations Not Discussed in Original Presentation
 
-### 1. **Implementation Complexity**
-- Requires custom CUDA kernels (standard PyTorch can't efficiently implement SSD)
-- Kernel fragility: custom implementations may break with upstream software changes
-- Debugging tools for Mamba lag significantly behind Transformers
-- Dependency management: practitioners must pin kernel versions carefully
-
-### 2. **Block Size Sensitivity**
+### 1. **Block Size Sensitivity**
 - Paper suggests optimal $Q \approx \sqrt{T}$ but doesn't explore sensitivity
 - How does performance degrade if $Q$ is chosen incorrectly?
 - In practice, practitioners must experiment to find good block sizes
 
-### 3. **Robustness of Semiseparable Assumption**
+### 2. **Robustness of Semiseparable Assumption**
 - The semiseparable structure assumes attention patterns follow decay structure
 - What happens when real data has irregular dependencies?
 - How much does enforcing semiseparable structure limit model expressiveness?
 
-### 4. **Limited Large-Scale Evaluation**
+### 3. **Limited Large-Scale Evaluation**
 - All detailed experiments at ≤1.3B parameters
 - Scaling behavior to 7B, 70B, 175B models unclear
 - It's unclear if Mamba-2 maintains advantages at GPT-3/GPT-4 scale
@@ -768,6 +762,7 @@ SSD maintains high GPU utilization by using structured parallelism (matrix cores
 
 </details>
 
+<details>
 Q2: Why use Mamba-2 when inference time is still significantly higher than sequential SSM and training is slower than FlashAttention?</strong></summary>
 
 **Great question—this gets at the real tradeoff:**
