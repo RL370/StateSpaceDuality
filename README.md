@@ -758,9 +758,9 @@ SSD maintains high GPU utilization by using structured parallelism (matrix cores
 
 </details>
 
-<details>
-Q2: Why use Mamba-2 when inference time is still significantly higher than sequential SSM and training is slower than FlashAttention?</strong></summary>
 
+Q2: Why use Mamba-2 when inference time is still significantly higher than sequential SSM and training is slower than FlashAttention?</strong></summary>
+<details>
 **Great question—this gets at the real tradeoff:**
 
 Mamba-2 is NOT faster than sequential SSM for all metrics. Here's the full picture:
