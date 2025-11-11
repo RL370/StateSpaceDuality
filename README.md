@@ -1,9 +1,7 @@
 # Transformers are SSMs: Generalized Models and Efficient Algorithms Through Structured State Space Duality
 
-**Paper Presentation for Generative AI Class**
-
-**Presenter**: Ryan [Your Last Name]  
-**Email**: [your.email@vanderbilt.edu](mailto:your.email@vanderbilt.edu)  
+**Presenter**: Ryan Li
+**Email**: [your.email@vanderbilt.edu](mailto:ryan.li@vanderbilt.edu)  
 **Institution**: Vanderbilt University - Data Science Institute  
 **Paper**: [Transformers are SSMs (arXiv:2405.21060)](https://arxiv.org/pdf/2405.21060)  
 **Authors**: Tri Dao (Princeton University) & Albert Gu (Carnegie Mellon University)
@@ -1419,7 +1417,7 @@ And optionally cite our presentation materials:
 
 1. **Theoretical**: At what point does O(N²) state operations become limiting for ultra-long contexts?
 
-2. **Algorithmic**: Can we learn the mask structure L dynamically during training?
+2. **Algorithmic**: Why do we still emphasize Attention mechanisms and State Space Machines if we have State Space Duality?
 
 3. **Architectural**: What's the optimal balance between attention layers and SSM layers in a hybrid model?
 
@@ -1438,12 +1436,3 @@ This presentation package includes:
 - 900+ lines of documentation
 
 All experimental results and claims are from the original paper. Our demonstrations provide hands-on verification of the key findings.
-
-**Questions? Comments? Found a bug?**  
-Open an issue or contact: [your.email@vanderbilt.edu](mailto:your.email@vanderbilt.edu)
-
----
-
-*Last updated: November 2024*
-*Paper published: May 2024*
-*Models and code: [github.com/state-spaces/mamba](https://github.com/state-spaces/mamba)*
