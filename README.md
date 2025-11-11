@@ -22,16 +22,6 @@
 ## 9. Discussion Questions
 
 ---
-
-|:---|:---|:---|:---|
-| **Perspective** | Sequential recurrence | Parallel kernel | Structured blocks |
-| **Processing Style** | One token at a time | All tokens at once | Blocks in parallel |
-| **Memory Usage** | $\mathcal{O}(N)$ state | $\mathcal{O}(T^2)$ matrix | $\mathcal{O}(Q^2)$ per block |
-| **Time Complexity** | $\mathcal{O}(T \cdot N)$ | $\mathcal{O}(T^2 \cdot d)$ | $\mathcal{O}(T \cdot d)$ |
-| **GPU Utilization** | 18% | 100% (dense) | 70-80% (structured) |
-| **Efficiency Type** | ✅ Linear time | ❌ Quadratic | ✅ Linear + Parallel |
-| **Best For** | Streaming, low latency | Dense reasoning | Long sequences |
-
 **The Key Takeaway:**
 
 All three are computing the **same underlying operation:** $Y = M X$ where $M$ is a transformation matrix.
